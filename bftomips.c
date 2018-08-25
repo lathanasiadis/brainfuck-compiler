@@ -2,9 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include "listutils.h"
 
@@ -13,6 +10,7 @@
 enum {NO_FILE,OMITTED_ARGS,OK};
 
 int verbose = 0;
+int cell_count = 30000;
 
 int handle_args(int argc, char *argv[],char in_file_path[],char out_file_path[]);
 FILE *safe_fopen(const char *pathname, const char *mode);
@@ -26,7 +24,7 @@ int main(int argc, char *argv[]){
 	char c;
 	FILE *in_file,*out_file;
 	List *labels;
-	int biggest_label=0,label;
+	int biggest_label=0,label,line=1,cell=0;
 	
 	list_init(&labels);
 	
@@ -46,15 +44,14 @@ int main(int argc, char *argv[]){
 	/*Open file and check for errors*/
 	in_file = safe_fopen(in_file_path,"r");
 	
-/*	if (file_exists(out_file_path)){
+	if (file_exists(out_file_path)){
 		fprintf(stderr,"Error: Output file %s exists.\n",out_file_path);
 		fclose(in_file);
 		exit(1);
-	}*/
+	}
 	
 	out_file = safe_fopen(out_file_path,"w");
 	program_start(out_file);
-	
 	
 	/*Main loop*/
 	c = fgetc(in_file);
@@ -62,9 +59,27 @@ int main(int argc, char *argv[]){
 		switch (c){
 			case '>' :
 				fputs("\taddi $s0,$s0,1\n",out_file);
+				if (++cell >= cell_count){
+					fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
+						    "(cell #%d does not exist)\n",in_file_path,line,cell);
+					fclose(out_file);
+					remove(out_file_path);
+					if (verbose)
+						fprintf(stderr,"Info: output file %s removed.\n",out_file_path);
+					goto end;
+				}
 				break;
 			case '<' :
 				fputs("\taddi $s0,$s0,-1\n",out_file);
+				if (--cell < 0){
+					fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
+						    "(cell #%d does not exist)\n",in_file_path,line,cell);
+					fclose(out_file);
+					remove(out_file_path);
+					if (verbose)
+						fprintf(stderr,"Info: output file %s removed.\n",out_file_path);
+					goto end;
+				}
 				break;
 			case '+' :
 				fputs("\tlb $t0,($s0)\n"
@@ -102,13 +117,20 @@ int main(int argc, char *argv[]){
 						"L%dend:\n",label,label);
 				rm_newest_node(&labels);
 				break;
+			case '\n' :
+				line++;
+				break;
 		}
 		
 		c = fgetc(in_file);
 	}
 	
 	program_end(out_file);
-	
+	fclose(out_file);
+
+end:
+	fclose(in_file);
+	nuke_list(&labels);
 	return 0;
 }
 
@@ -172,36 +194,34 @@ FILE *safe_fopen(const char *pathname, const char *mode){
 
 /*checks if file at given path exists*/
 int file_exists(char path[]){
-	int fd = open(path,O_CREAT|O_EXCL|O_WRONLY,S_IRWXU);
+	FILE *test= fopen(path,"r");
 	
-	if (fd == -1){
-		if (errno == EEXIST){
-			return 1;
-		}
-		fprintf(stderr,"Error: Can't create file %s : %s\n",path,strerror(errno));		
+	if (test == NULL){
+		return 0;
 	}
 	
-	close(fd);
-	return 0;	
+	fclose(test);
+	return 1;	
 }
 
 /*Writes the .data section and the start of the .text section(initializing the
 byte array of the MIPS program.
 Requires the FILE pointer to be already opened with fopen*/
 void program_start(FILE *out_file){
-	fputs(".data\n"
-		  "\tcells: .space 30000\n"
+	fprintf(out_file,
+		  ".data\n"
+		  "\tcells: .space %d\n"
 		  ".text\n"
 		  "\tla $s0,cells\n"
 		  "\tli $t0,0\n"
-		  "\tli $t1,30000\n"
+		  "\tli $t1,%d\n"
 		  "L0:\n"
 		  "\tlb $zero,($s0)\n"
 		  "\taddi $t0,$t0,1\n"
 		  "\tbeq $t0,$t1,L0end\n"
 		  "\tj L0\n"
 		  "L0end:\n"
-		  ,out_file);
+		  ,cell_count,cell_count);
 }
 /*issues the exit syscall*/
 void program_end(FILE *out_file){
