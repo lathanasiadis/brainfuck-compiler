@@ -8,6 +8,7 @@
 #define SIZE 512
 
 enum {NO_FILE,OMITTED_ARGS,OK};
+typedef enum {NO_ERR,INV_CELL,NO_L_BRACKET,NO_R_BRACKET} Error;
 
 int verbose = 0;
 int cell_count = 30000;
@@ -25,7 +26,8 @@ int main(int argc, char *argv[]){
 	FILE *in_file,*out_file;
 	List *labels;
 	int biggest_label=0,label,line=1,cell=0;
-	
+	Error error=NO_ERR;
+		
 	list_init(&labels);
 	
 	/*Display warnings or error messages*/
@@ -53,33 +55,28 @@ int main(int argc, char *argv[]){
 	out_file = safe_fopen(out_file_path,"w");
 	program_start(out_file);
 	
+	printf("cell: %d\n",cell);
+	
 	/*Main loop*/
 	c = fgetc(in_file);
 	while (c != EOF){
 		switch (c){
 			case '>' :
-				fputs("\taddi $s0,$s0,1\n",out_file);
-				if (++cell >= cell_count){
-					fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
-						    "(cell #%d does not exist)\n",in_file_path,line,cell);
-					fclose(out_file);
-					remove(out_file_path);
-					if (verbose)
-						fprintf(stderr,"Info: output file %s removed.\n",out_file_path);
-					goto end;
+				if (++cell>cell_count-1){
+					error = INV_CELL;
+					break;
 				}
+				printf("pos: %d\n",cell);
+				fputs("\taddi $s0,$s0,1\n",out_file);
 				break;
 			case '<' :
-				fputs("\taddi $s0,$s0,-1\n",out_file);
-				if (--cell < 0){
-					fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
-						    "(cell #%d does not exist)\n",in_file_path,line,cell);
-					fclose(out_file);
-					remove(out_file_path);
-					if (verbose)
-						fprintf(stderr,"Info: output file %s removed.\n",out_file_path);
-					goto end;
+				if (--cell<0){
+					error = INV_CELL;
+					break;
 				}
+				cell--;
+				printf("pos: %d\n",cell);
+				fputs("\taddi $s0,$s0,-1\n",out_file);
 				break;
 			case '+' :
 				fputs("\tlb $t0,($s0)\n"
@@ -121,16 +118,39 @@ int main(int argc, char *argv[]){
 				line++;
 				break;
 		}
+		if (error != NO_ERR)
+			break;
 		
 		c = fgetc(in_file);
 	}
-	
-	program_end(out_file);
-	fclose(out_file);
 
-end:
+	switch (error){
+		/*these 2 will be added later*/
+		case NO_L_BRACKET:
+		case NO_R_BRACKET: 
+		case NO_ERR: break;
+		case INV_CELL:
+			fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
+				"(cell# %d does not exist)\n",in_file_path,line,cell);
+			break;
+	}
+
+	/*close FILE *streams*/
+	fclose(out_file);
 	fclose(in_file);
+	/*free list head&nodes*/	
 	nuke_list(&labels);
+	
+	if (error == NO_ERR)
+		/*terminate the program successfully*/
+		program_end(out_file);
+	else{
+		remove(out_file_path);
+		if (verbose)
+			fprintf(stderr,"Info: output file %s removed due to errors\n",out_file_path);
+	}
+		
+	
 	return 0;
 }
 
@@ -229,8 +249,15 @@ void program_end(FILE *out_file){
 		  "\tsyscall\n",out_file);
 }
 
-
-
+/*If the bf program accesses an invalid cell, close the FILE *pointer,
+and return 1. Otherwise return 0*/
+int check_cell(int cell, FILE *out_file){
+	if (cell>=cell_count || cell<0 ){
+		fclose(out_file);
+		return 1;
+	}
+	return 0;
+}
 
 
 
