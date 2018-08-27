@@ -55,8 +55,6 @@ int main(int argc, char *argv[]){
 	out_file = safe_fopen(out_file_path,"w");
 	program_start(out_file);
 	
-	printf("cell: %d\n",cell);
-	
 	/*Main loop*/
 	c = fgetc(in_file);
 	while (c != EOF){
@@ -66,7 +64,6 @@ int main(int argc, char *argv[]){
 					error = INV_CELL;
 					break;
 				}
-				printf("pos: %d\n",cell);
 				fputs("\taddi $s0,$s0,1\n",out_file);
 				break;
 			case '<' :
@@ -74,8 +71,6 @@ int main(int argc, char *argv[]){
 					error = INV_CELL;
 					break;
 				}
-				cell--;
-				printf("pos: %d\n",cell);
 				fputs("\taddi $s0,$s0,-1\n",out_file);
 				break;
 			case '+' :
@@ -258,20 +253,4 @@ int check_cell(int cell, FILE *out_file){
 	}
 	return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
