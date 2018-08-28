@@ -8,7 +8,7 @@
 #define SIZE 512
 
 enum {NO_FILE,OMITTED_ARGS,OK};
-typedef enum {NO_ERR,INV_CELL,NO_L_BRACKET,NO_R_BRACKET} Error;
+typedef enum {NO_ERR,NO_L_BRACKET,NO_R_BRACKET} Error;
 
 int verbose = 0;
 int cell_count = 30000;
@@ -25,7 +25,7 @@ int main(int argc, char *argv[]){
 	char c;
 	FILE *in_file,*out_file;
 	List *labels;
-	int biggest_label=0,label,line=1,cell=0;
+	int biggest_label=0,label,line=1;
 	Error error=NO_ERR;
 		
 	list_init(&labels);
@@ -60,17 +60,9 @@ int main(int argc, char *argv[]){
 	while (c != EOF){
 		switch (c){
 			case '>' :
-				if (++cell>cell_count-1){
-					error = INV_CELL;
-					break;
-				}
 				fputs("\taddi $s0,$s0,1\n",out_file);
 				break;
 			case '<' :
-				if (--cell<0){
-					error = INV_CELL;
-					break;
-				}
 				fputs("\taddi $s0,$s0,-1\n",out_file);
 				break;
 			case '+' :
@@ -105,7 +97,8 @@ int main(int argc, char *argv[]){
 			case ']' :
 				label = (get_newest_node(labels))->value;
 				fprintf(out_file,
-						"\tj L%d\n"
+						"\tlb $t0,($s0)\n"
+						"\tbnez $t0,L%d\n"
 						"L%dend:\n",label,label);
 				rm_newest_node(&labels);
 				break;
@@ -124,17 +117,7 @@ int main(int argc, char *argv[]){
 		case NO_L_BRACKET:
 		case NO_R_BRACKET: 
 		case NO_ERR: break;
-		case INV_CELL:
-			fprintf(stderr,"Error: %s:%d : attempt to access an invalid cell "
-				"(cell# %d does not exist)\n",in_file_path,line,cell);
-			break;
 	}
-
-	/*close FILE *streams*/
-	fclose(out_file);
-	fclose(in_file);
-	/*free list head&nodes*/	
-	nuke_list(&labels);
 	
 	if (error == NO_ERR)
 		/*terminate the program successfully*/
@@ -144,7 +127,12 @@ int main(int argc, char *argv[]){
 		if (verbose)
 			fprintf(stderr,"Info: output file %s removed due to errors\n",out_file_path);
 	}
-		
+	
+	/*close FILE *streams*/
+	fclose(out_file);
+	fclose(in_file);
+	/*free list head&nodes*/	
+	nuke_list(&labels);		
 	
 	return 0;
 }
