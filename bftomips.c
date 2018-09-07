@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
-#include "listutils.h"
+#include "stackutils.h"
 
 #define SIZE 512
 
@@ -24,11 +24,11 @@ int main(int argc, char *argv[]){
 	char out_file_path[SIZE] = {0};
 	char c;
 	FILE *in_file,*out_file;
-	List *labels;
+	Stack *labels;
 	int biggest_label=0,label,line=1;
 	Error error=NO_ERR;
 		
-	list_init(&labels);
+	stack_init(&labels);
 	
 	/*Display warnings or error messages*/
 	switch (handle_args(argc,argv,in_file_path,out_file_path)){
@@ -92,15 +92,15 @@ int main(int argc, char *argv[]){
 						"L%d:\n"
 						"\tlb $t0,($s0)\n"
 						"\tbeqz $t0,L%dend\n",label,label);
-				list_add(&labels,label);
+				push(&labels,label);
 				break;
 			case ']' :
-				label = (get_newest_node(labels))->value;
+				label = (top(labels))->val;
 				fprintf(out_file,
 						"\tlb $t0,($s0)\n"
 						"\tbnez $t0,L%d\n"
 						"L%dend:\n",label,label);
-				rm_newest_node(&labels);
+				pop(&labels);
 				break;
 			case '\n' :
 				line++;
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]){
 	fclose(out_file);
 	fclose(in_file);
 	/*free list head&nodes*/	
-	nuke_list(&labels);		
+	nuke_stack(&labels);		
 	
 	return 0;
 }
@@ -231,14 +231,3 @@ void program_end(FILE *out_file){
 	fputs("\tli $v0,10\n"
 		  "\tsyscall\n",out_file);
 }
-
-/*If the bf program accesses an invalid cell, close the FILE *pointer,
-and return 1. Otherwise return 0*/
-int check_cell(int cell, FILE *out_file){
-	if (cell>=cell_count || cell<0 ){
-		fclose(out_file);
-		return 1;
-	}
-	return 0;
-}
-
